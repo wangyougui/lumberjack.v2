@@ -124,3 +124,7 @@ func WithMaxBackups(s int64) Option {
 func WithCompress(n uint) Option {
 	return option2.NewOption(optKeyCompress, n)
 }
+
+func WithMaxSize(maxSize int) Option {
+	return option2.NewOption(optKeyMaxSize, maxSize)
+}
