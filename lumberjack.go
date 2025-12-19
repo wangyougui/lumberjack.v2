@@ -40,6 +40,7 @@ const (
 	backupTimeFormat = "2006010215"
 	compressSuffix   = ".gz"
 	defaultMaxSize   = 100
+	rotationTime     = 24 * time.Hour
 )
 
 // ensure we always implement io.WriteCloser
@@ -78,9 +79,8 @@ var _ io.WriteCloser = (*Logger)(nil)
 //
 // If MaxBackups and MaxAge are both 0, no old log files will be deleted.
 type Logger struct {
-	clock        Clock
-	rotationTime time.Duration
-	pattern      *Strftime
+	clock   Clock
+	pattern *Strftime
 
 	// Filename is the file to write logs to.  Backup log files will be retained
 	// in the same directory.  It uses <processname>-lumberjack.log in
@@ -136,7 +136,6 @@ func NewLogger(p string, options ...Option) (*Logger, error) {
 	}
 
 	var clock Clock = Local
-	rotationTime := 24 * time.Hour
 
 	var maxAge int
 	var maxSize int = defaultMaxSize
@@ -156,11 +155,6 @@ func NewLogger(p string, options ...Option) (*Logger, error) {
 			if maxSize < 0 {
 				maxSize = 0
 			}
-		case optkeyRotationTime:
-			rotationTime = o.Value().(time.Duration)
-			if rotationTime < 0 {
-				rotationTime = 0
-			}
 		case optkeyMaxBackups:
 			maxBackups = o.Value().(int)
 			if maxBackups <= 0 {
@@ -171,14 +165,13 @@ func NewLogger(p string, options ...Option) (*Logger, error) {
 		}
 	}
 	logger := &Logger{
-		clock:        clock,
-		rotationTime: rotationTime,
-		pattern:      pattern,
-		Filename:     globPattern,
-		MaxSize:      maxSize,
-		MaxAge:       maxAge,
-		MaxBackups:   maxBackups,
-		Compress:     compress,
+		clock:      clock,
+		pattern:    pattern,
+		Filename:   globPattern,
+		MaxSize:    maxSize,
+		MaxAge:     maxAge,
+		MaxBackups: maxBackups,
+		Compress:   compress,
 	}
 	return logger, nil
 }
@@ -386,10 +379,10 @@ func (rl *Logger) genFilename() string {
 	var base time.Time
 	if now.Location() != time.UTC {
 		base = time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond(), time.UTC)
-		base = base.Truncate(time.Duration(rl.rotationTime))
+		base = base.Truncate(time.Duration(rotationTime))
 		base = time.Date(base.Year(), base.Month(), base.Day(), base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location())
 	} else {
-		base = now.Truncate(time.Duration(rl.rotationTime))
+		base = now.Truncate(time.Duration(rotationTime))
 	}
 	return rl.pattern.FormatString(base)
 }
