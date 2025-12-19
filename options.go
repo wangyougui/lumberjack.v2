@@ -102,19 +102,19 @@ func WithLocation(loc *time.Location) Option {
 // WithMaxAge creates a new Option that sets the
 // max age of a log file before it gets purged from
 // the file system.
-func WithMaxAge(d time.Duration) Option {
+func WithMaxAge(d int) Option {
 	return option2.NewOption(optkeyMaxAge, d)
 }
 
 // WithRotationTime creates a new Option that sets the
 // time between rotation.
-func WithRotationTime(d time.Duration) Option {
+func WithRotationTime(d int) Option {
 	return option2.NewOption(optkeyRotationTime, d)
 }
 
 // WithMaxBackups creates a new Option that sets the
 // log file size between rotation.
-func WithMaxBackups(s int64) Option {
+func WithMaxBackups(s int) Option {
 	return option2.NewOption(optkeyMaxBackups, s)
 }
 
