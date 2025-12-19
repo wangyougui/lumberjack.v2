@@ -3,7 +3,7 @@
 // Note that this is v2.0 of lumberjack, and should be imported using gopkg.in
 // thusly:
 //
-//   import "gopkg.in/natefinch/lumberjack.v2"
+//	import "gopkg.in/natefinch/lumberjack.v2"
 //
 // The package name remains simply lumberjack, and the code resides at
 // https://github.com/natefinch/lumberjack under the v2.0 branch.
@@ -29,6 +29,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -36,7 +37,7 @@ import (
 )
 
 const (
-	backupTimeFormat = "2006-01-02T15-04-05.000"
+	backupTimeFormat = "2006010215"
 	compressSuffix   = ".gz"
 	defaultMaxSize   = 100
 )
@@ -66,7 +67,7 @@ var _ io.WriteCloser = (*Logger)(nil)
 // `/var/log/foo/server.log`, a backup created at 6:30pm on Nov 11 2016 would
 // use the filename `/var/log/foo/server-2016-11-04T18-30-00.000.log`
 //
-// Cleaning Up Old Log Files
+// # Cleaning Up Old Log Files
 //
 // Whenever a new logfile gets created, old log files may be deleted.  The most
 // recent files according to the encoded timestamp will be retained, up to a
@@ -77,6 +78,10 @@ var _ io.WriteCloser = (*Logger)(nil)
 //
 // If MaxBackups and MaxAge are both 0, no old log files will be deleted.
 type Logger struct {
+	clock        Clock
+	rotationTime time.Duration
+	pattern      *Strftime
+
 	// Filename is the file to write logs to.  Backup log files will be retained
 	// in the same directory.  It uses <processname>-lumberjack.log in
 	// os.TempDir() if empty.
@@ -113,6 +118,74 @@ type Logger struct {
 
 	millCh    chan bool
 	startMill sync.Once
+}
+
+func (c clockFn) Now() time.Time {
+	return c()
+}
+
+func New(p string, options ...Option) (*Logger, error) {
+	globPattern := p
+	for _, re := range patternConversionRegexps {
+		globPattern = re.ReplaceAllString(globPattern, "*")
+	}
+
+	pattern, err := NewStf(p)
+	if err != nil {
+		return nil, fmt.Errorf("invalid strftime pattern")
+	}
+
+	var clock Clock = Local
+	rotationTime := 24 * time.Hour
+
+	var maxAge int
+	var maxSize int = defaultMaxSize
+	var maxBackups int
+	var compress bool
+	for _, o := range options {
+		switch o.Name() {
+		case optkeyClock:
+			clock = o.Value().(Clock)
+		case optkeyMaxAge:
+			maxAge = o.Value().(int)
+			if maxAge < 0 {
+				maxAge = 0
+			}
+		case optKeyMaxSize:
+			maxSize = o.Value().(int)
+			if maxSize < 0 {
+				maxSize = 0
+			}
+		case optkeyRotationTime:
+			rotationTime = o.Value().(time.Duration)
+			if rotationTime < 0 {
+				rotationTime = 0
+			}
+		case optkeyMaxBackups:
+			maxBackups = o.Value().(int)
+			if maxBackups <= 0 {
+				maxBackups = defaultMaxSize
+			}
+		case optKeyCompress:
+			compress = o.Value().(bool)
+		}
+	}
+	logger := &Logger{
+		clock:        clock,
+		rotationTime: rotationTime,
+		pattern:      pattern,
+		Filename:     globPattern,
+		MaxSize:      maxSize,
+		MaxAge:       maxAge,
+		MaxBackups:   maxBackups,
+		Compress:     compress,
+	}
+	return logger, nil
+}
+
+var patternConversionRegexps = []*regexp.Regexp{
+	regexp.MustCompile(`%[%+A-Za-z]`),
+	regexp.MustCompile(`\*+`),
 }
 
 var (
@@ -291,10 +364,34 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 // filename generates the name of the logfile from the current time.
 func (l *Logger) filename() string {
 	if l.Filename != "" {
-		return l.Filename
+		return l.genFilename()
 	}
 	name := filepath.Base(os.Args[0]) + "-lumberjack.log"
 	return filepath.Join(os.TempDir(), name)
+}
+
+func (rl *Logger) genFilename() string {
+	now := rl.clock.Now()
+
+	// XXX HACK: Truncate only happens in UTC semantics, apparently.
+	// observed values for truncating given time with 86400 secs:
+	//
+	// before truncation: 2018/06/01 03:54:54 2018-06-01T03:18:00+09:00
+	// after  truncation: 2018/06/01 03:54:54 2018-05-31T09:00:00+09:00
+	//
+	// This is really annoying when we want to truncate in local time
+	// so we hack: we take the apparent local time in the local zone,
+	// and pretend that it's in UTC. do our math, and put it back to
+	// the local zone
+	var base time.Time
+	if now.Location() != time.UTC {
+		base = time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), now.Second(), now.Nanosecond(), time.UTC)
+		base = base.Truncate(time.Duration(rl.rotationTime))
+		base = time.Date(base.Year(), base.Month(), base.Day(), base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location())
+	} else {
+		base = now.Truncate(time.Duration(rl.rotationTime))
+	}
+	return rl.pattern.FormatString(base)
 }
 
 // millRunOnce performs compression and removal of stale log files.
