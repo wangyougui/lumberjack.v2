@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,6 +26,19 @@ var fakeCurrentTime = time.Now()
 
 func fakeTime() time.Time {
 	return fakeCurrentTime
+}
+
+func TestNewLumberjack(t *testing.T) {
+	_, err := NewLogger(
+		path.Join("./trace", "%Y-%m-%d.log"),
+		WithMaxAge(2),
+		WithMaxBackups(3),
+		WithCompress(true),
+		WithMaxAge(time.Hour),
+	)
+	if err != nil {
+		return
+	}
 }
 
 func TestNewFile(t *testing.T) {

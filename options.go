@@ -121,7 +121,7 @@ func WithMaxBackups(s int64) Option {
 // WithCompress creates a new Option that sets the
 // number of files should be kept before it gets
 // purged from the file system.
-func WithCompress(n uint) Option {
+func WithCompress(n bool) Option {
 	return option2.NewOption(optKeyCompress, n)
 }
 

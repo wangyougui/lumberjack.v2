@@ -124,7 +124,7 @@ func (c clockFn) Now() time.Time {
 	return c()
 }
 
-func New(p string, options ...Option) (*Logger, error) {
+func NewLogger(p string, options ...Option) (*Logger, error) {
 	globPattern := p
 	for _, re := range patternConversionRegexps {
 		globPattern = re.ReplaceAllString(globPattern, "*")
